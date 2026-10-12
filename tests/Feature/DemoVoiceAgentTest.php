@@ -150,4 +150,38 @@ class DemoVoiceAgentTest extends TestCase
         $this->assertSame('What email address did you use for the booking?', $replies[1]);
         $this->assertSame('Here are your booking details. Booking 1025 for Asha Rao is confirmed on Tuesday, 13 October at 3 PM with Rahul Sharma.', $replies[2]);
     }
+
+    public function test_it_asks_again_when_it_does_not_understand_the_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-12 09:00', 'Asia/Kolkata'));
+
+        $replies = $this->converse(['What slots are available tomorrow?', 'sx', '11']);
+
+        $this->assertSame('Sorry, I did not catch the time. Please say a time such as 11 AM or 3 PM.', $replies[1]);
+        $this->assertSame('May I have your full name, please?', $replies[2]);
+    }
+
+    public function test_it_asks_for_yes_or_no_when_the_confirmation_is_unclear(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-12 09:00', 'Asia/Kolkata'));
+
+        $replies = $this->converse([
+            'Book tomorrow at 11 am, my name is Asha Rao and my email is asha@example.com',
+            'hmm',
+            'yes',
+        ]);
+
+        $this->assertSame('Please say yes to book it, or no to change something.', $replies[1]);
+        $this->assertStringContainsString('Your booking ID is 1025', $replies[2]);
+        $this->assertCount(1, array_keys(array_column($this->toolCalls, 'name'), 'book_interview'));
+    }
+
+    public function test_it_replies_to_greetings_and_thanks_without_calling_tools(): void
+    {
+        $replies = $this->converse(['Hello', 'thank you']);
+
+        $this->assertStringStartsWith('Hello! I can show available interview slots', $replies[0]);
+        $this->assertSame('You are welcome! Is there anything else I can help you with?', $replies[1]);
+        $this->assertSame([], $this->toolCalls);
+    }
 }

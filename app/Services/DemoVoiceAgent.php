@@ -29,6 +29,10 @@ class DemoVoiceAgent
 
     protected const FREE_TIMES = 'Free times are';
 
+    protected const RETRY_TIME = 'Sorry, I did not catch the time.';
+
+    protected const RETRY_CONFIRM = 'Please say yes to book it, or no to change something.';
+
     protected const BOOKED = 'Your booking ID is';
 
     protected const FOUND = 'Here are your booking details.';
@@ -43,6 +47,14 @@ class DemoVoiceAgent
     public function reply(array $conversation): string
     {
         $state = $this->readConversation($conversation);
+
+        if ($state['small_talk'] !== null) {
+            return $state['small_talk'];
+        }
+
+        if (! $state['understood']) {
+            return $this->notUnderstood($state['last_bot']);
+        }
 
         try {
             return match ($state['intent']) {
@@ -64,7 +76,7 @@ class DemoVoiceAgent
      * short answers such as "yes", "11" or a bare name.
      *
      * @param  array<int, array{role: string, content: string}>  $conversation
-     * @return array{intent: ?string, date: ?string, time: ?string, name: ?string, email: ?string, booking_id: ?int, confirmed: ?bool}
+     * @return array{intent: ?string, date: ?string, time: ?string, name: ?string, email: ?string, booking_id: ?int, confirmed: ?bool, understood: bool, small_talk: ?string, last_bot: string}
      */
     protected function readConversation(array $conversation): array
     {
@@ -77,7 +89,7 @@ class DemoVoiceAgent
             }
         }
 
-        $state = ['intent' => null, 'date' => null, 'time' => null, 'name' => null, 'email' => null, 'booking_id' => null, 'confirmed' => null];
+        $state = ['intent' => null, 'date' => null, 'time' => null, 'name' => null, 'email' => null, 'booking_id' => null, 'confirmed' => null, 'understood' => true, 'small_talk' => null, 'last_bot' => ''];
         $lastBotMessage = '';
 
         foreach (array_slice($conversation, $start) as $message) {
@@ -91,13 +103,25 @@ class DemoVoiceAgent
             $email = $this->parseEmail($text);
             $textWithoutEmail = $this->removeEmails($text);
 
-            $state['email'] = $email ?? $state['email'];
-            $state['date'] = $this->parseDate($textWithoutEmail) ?? $state['date'];
-            $state['time'] = $this->parseTime($textWithoutEmail, $lastBotMessage) ?? $state['time'];
-            $state['name'] = $this->parseName($textWithoutEmail, $lastBotMessage) ?? $state['name'];
-            $state['booking_id'] = $this->parseBookingId($textWithoutEmail, $lastBotMessage) ?? $state['booking_id'];
-            $state['confirmed'] = str_starts_with($lastBotMessage, self::ASK_CONFIRM) ? $this->parseYesNo($text) : null;
-            $state['intent'] = $this->parseIntent($text) ?? $state['intent'];
+            $found = [
+                'email' => $email,
+                'date' => $this->parseDate($textWithoutEmail),
+                'time' => $this->parseTime($textWithoutEmail, $lastBotMessage),
+                'name' => $this->parseName($textWithoutEmail, $lastBotMessage),
+                'booking_id' => $this->parseBookingId($textWithoutEmail, $lastBotMessage),
+            ];
+            $intent = $this->parseIntent($text);
+            $confirmed = $this->askedToConfirm($lastBotMessage) ? $this->parseYesNo($text) : null;
+
+            foreach ($found as $field => $value) {
+                $state[$field] = $value ?? $state[$field];
+            }
+
+            $state['confirmed'] = $confirmed;
+            $state['intent'] = $intent ?? $state['intent'];
+            $state['small_talk'] = $intent === null ? $this->smallTalk($text) : null;
+            $state['understood'] = $intent !== null || $confirmed !== null || array_filter($found) !== [];
+            $state['last_bot'] = $lastBotMessage;
 
             // A time mentioned while browsing slots (or with no clear intent) means "book it".
             if (in_array($state['intent'], [null, 'slots'], true) && $this->parseTime($textWithoutEmail, $lastBotMessage)) {
@@ -217,6 +241,50 @@ class DemoVoiceAgent
     }
 
     /**
+     * Whether the bot is waiting for a yes or no before booking.
+     */
+    protected function askedToConfirm(string $lastBotMessage): bool
+    {
+        return str_starts_with($lastBotMessage, self::ASK_CONFIRM) || $lastBotMessage === self::RETRY_CONFIRM;
+    }
+
+    /**
+     * Whether the bot just asked for a time (so a bare "11" is a time).
+     */
+    protected function offeredTimes(string $lastBotMessage): bool
+    {
+        return stripos($lastBotMessage, self::FREE_TIMES) !== false
+            || str_starts_with($lastBotMessage, self::RETRY_TIME);
+    }
+
+    /**
+     * Reply to greetings and thanks, which need no tool.
+     */
+    protected function smallTalk(string $text): ?string
+    {
+        return match (true) {
+            (bool) preg_match('/\b(thanks|thank you|thankyou|dhanyavaad|shukriya)\b/', $text) => 'You are welcome! Is there anything else I can help you with?',
+            (bool) preg_match('/^(hi|hello|hey|namaste|good (morning|afternoon|evening))\b[\s!.,]*$/', $text) => 'Hello! '.self::HELP,
+            default => null,
+        };
+    }
+
+    /**
+     * Ask again, with a hint that fits the question the bot just asked.
+     */
+    protected function notUnderstood(string $lastBotMessage): string
+    {
+        return match (true) {
+            $this->offeredTimes($lastBotMessage) => self::RETRY_TIME.' Please say a time such as 11 AM or 3 PM.',
+            $lastBotMessage === self::ASK_DATE => 'Sorry, I did not catch the date. Please say today, tomorrow, or a day such as Monday.',
+            $lastBotMessage === self::ASK_EMAIL || str_starts_with($lastBotMessage, 'What email') => 'Sorry, I did not catch your email. Please say it like asha dot rao at gmail dot com, or type it.',
+            $lastBotMessage === self::ASK_BOOKING_ID => 'Sorry, I did not catch the booking ID. Please say the number, for example 25.',
+            $this->askedToConfirm($lastBotMessage) => self::RETRY_CONFIRM,
+            default => 'Sorry, I did not understand that. '.self::HELP,
+        };
+    }
+
+    /**
      * @return array<int, string> Start times in HH:MM format.
      */
     protected function availableTimes(string $date): array
@@ -321,7 +389,7 @@ class DemoVoiceAgent
 
         // "at 3" or a bare "11" in reply to "Which time would you like?"
         if (preg_match('/\bat (\d{1,2})\b(?!\s*(?:st|nd|rd|th|[a-z]{3}))/', $text, $match)
-            || (str_contains($lastBotMessage, self::FREE_TIMES) && preg_match('/^\D*\b(\d{1,2})\b\D*$/', $text, $match))) {
+            || ($this->offeredTimes($lastBotMessage) && preg_match('/^\D*\b(\d{1,2})\b\D*$/', $text, $match))) {
             $hour = (int) $match[1];
 
             // Interviews run in office hours, so "at 3" means 3 PM.

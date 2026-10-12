@@ -473,6 +473,10 @@
             });
             const data = await response.json().catch(() => ({}));
 
+            if (response.status === 429) {
+                throw new Error('You are sending messages very quickly. Please wait a minute and try again.');
+            }
+
             if (!response.ok || !data.success) {
                 throw new Error(data.message || 'Sorry, something went wrong on our side.');
             }

@@ -151,18 +151,47 @@ A: Send an email confirmation, add rescheduling and cancellation, add login/OTP 
 
 ---
 
-## 9. How to run the demo
+## 9. Interview-day checklist
+
+**The day before or that morning:**
 
 ```bash
-php artisan migrate
-php artisan db:seed --class=InterviewSlotSeeder   # adds slots for the next 5 weekdays
+cd /var/www/html/interview-scheduler
+php artisan interview:reset-demo     # deletes ALL bookings, creates slots for the next 5 weekdays
+php artisan config:clear
 php artisan serve
 ```
 
-Open `http://localhost:8000/voice-bot` in **Chrome** and try:
+Slots are created only for the **next 5 weekdays from the day you run the reset**. If you run it a week early, "tomorrow" may have no slots, so run it on the day.
 
-1. "What slots are available tomorrow?"
-2. "Book 11 AM" → give your name → give your email → say "yes"
-3. "Check my existing booking" → give the booking ID → give the email
+**Before you share your screen:**
 
-To use real AI: set `ANTHROPIC_API_KEY=...` and `VOICE_AGENT_MODE=auto` in `.env`, then run `php artisan config:clear`.
+1. Open `http://localhost:8000/voice-bot` in **Chrome**, using a normal window rather than incognito, so microphone permission is remembered.
+2. Click the mic once and **allow microphone access**.
+3. Check that the internet is on, because Chrome's speech recognition needs it.
+4. Turn your speaker volume up so the interviewer hears the bot.
+5. Click the ↻ (new conversation) button to start clean.
+
+**A good 2-minute demo script:**
+
+1. "What slots are available tomorrow?" (the bot lists the times)
+2. "11 AM" (it asks for your name)
+3. Say your name (it asks for your email)
+4. Say "yourname dot test at gmail dot com" (it converts the spoken email and reads it back)
+5. "Yes" (it books the slot and tells you the booking ID)
+6. "Check my existing booking" → the booking ID → the email (it reads out the booking details)
+7. Show the double-booking guard: "Book tomorrow at 11 AM" (it says 11 AM is not free)
+
+**If something goes wrong:**
+
+| Problem | Fix |
+|---|---|
+| Mic button is greyed out | Use Chrome or Edge, and open the page via `localhost`, not an IP address |
+| "Microphone access is blocked" | Click the lock icon in the address bar → Microphone → Allow |
+| No slots for tomorrow | Run `php artisan interview:reset-demo` |
+| "Sending messages very quickly" | Wait one minute; the limit is 20 messages per minute |
+| Voice misunderstands you | Type the message instead; the same flow works |
+
+## 10. How to run with real AI
+
+To use Claude instead of demo mode, set `ANTHROPIC_API_KEY=...` and `VOICE_AGENT_MODE=auto` in `.env`, then run `php artisan config:clear`.
