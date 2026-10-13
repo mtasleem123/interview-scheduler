@@ -103,12 +103,14 @@ class DemoVoiceAgent
             $email = $this->parseEmail($text);
             $textWithoutEmail = $this->removeEmails($text);
 
+            $numericText = $this->numberWordsToDigits($textWithoutEmail);
+
             $found = [
                 'email' => $email,
-                'date' => $this->parseDate($textWithoutEmail),
-                'time' => $this->parseTime($textWithoutEmail, $lastBotMessage),
+                'date' => $this->parseDate($numericText),
+                'time' => $this->parseTime($numericText, $lastBotMessage),
                 'name' => $this->parseName($textWithoutEmail, $lastBotMessage),
-                'booking_id' => $this->parseBookingId($textWithoutEmail, $lastBotMessage),
+                'booking_id' => $this->parseBookingId($numericText, $lastBotMessage),
             ];
             $intent = $this->parseIntent($text);
             $confirmed = $this->askedToConfirm($lastBotMessage) ? $this->parseYesNo($text) : null;
@@ -124,7 +126,7 @@ class DemoVoiceAgent
             $state['last_bot'] = $lastBotMessage;
 
             // A time mentioned while browsing slots (or with no clear intent) means "book it".
-            if (in_array($state['intent'], [null, 'slots'], true) && $this->parseTime($textWithoutEmail, $lastBotMessage)) {
+            if (in_array($state['intent'], [null, 'slots'], true) && $found['time'] !== null) {
                 $state['intent'] = 'book';
             }
         }
@@ -399,6 +401,31 @@ class DemoVoiceAgent
         return null;
     }
 
+    /**
+     * Speech recognition sometimes writes numbers as words ("eighteen", "eleven am").
+     */
+    protected function numberWordsToDigits(string $text): string
+    {
+        $units = ['zero' => 0, 'one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6, 'seven' => 7, 'eight' => 8, 'nine' => 9,
+            'ten' => 10, 'eleven' => 11, 'twelve' => 12, 'thirteen' => 13, 'fourteen' => 14, 'fifteen' => 15, 'sixteen' => 16, 'seventeen' => 17, 'eighteen' => 18, 'nineteen' => 19];
+        $tens = ['twenty' => 20, 'thirty' => 30, 'forty' => 40, 'fifty' => 50, 'sixty' => 60, 'seventy' => 70, 'eighty' => 80, 'ninety' => 90];
+
+        $unitPattern = implode('|', array_keys($units));
+        $tensPattern = implode('|', array_keys($tens));
+
+        $text = preg_replace_callback(
+            "/\\b({$tensPattern})(?:[\\s-]+({$unitPattern}))?\\b/",
+            fn (array $match): string => (string) ($tens[$match[1]] + (isset($match[2]) ? $units[$match[2]] : 0)),
+            $text,
+        );
+
+        return preg_replace_callback(
+            "/\\b({$unitPattern})\\b/",
+            fn (array $match): string => (string) $units[$match[1]],
+            $text,
+        );
+    }
+
     protected function parseEmail(string $text): ?string
     {
         $pattern = '/[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/';
@@ -454,6 +481,9 @@ class DemoVoiceAgent
 
     protected function parseBookingId(string $text, string $lastBotMessage): ?int
     {
+        // "one eight" or "ten twenty five" arrive as separate numbers; an ID is one number.
+        $text = preg_replace('/(?<=\d)[\s-]+(?=\d)/', '', $text);
+
         if (preg_match('/\b(?:booking|id|number)\D{0,15}?(\d{1,9})\b/', $text, $match)
             || ($lastBotMessage === self::ASK_BOOKING_ID && preg_match('/\b(\d{1,9})\b/', $text, $match))) {
             return (int) $match[1];

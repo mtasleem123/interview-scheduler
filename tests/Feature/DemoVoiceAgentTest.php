@@ -184,4 +184,15 @@ class DemoVoiceAgentTest extends TestCase
         $this->assertSame('You are welcome! Is there anything else I can help you with?', $replies[1]);
         $this->assertSame([], $this->toolCalls);
     }
+
+    public function test_it_understands_numbers_spoken_as_words(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-12 09:00', 'Asia/Kolkata'));
+
+        $this->converse(['Check my existing booking', 'ten twenty five', 'asha.rao@gmail.com']);
+        $this->assertSame(1025, collect($this->toolCalls)->firstWhere('name', 'get_booking')['arguments']['booking_id']);
+
+        [$booking] = $this->converse(['Book tomorrow at eleven am']);
+        $this->assertSame('May I have your full name, please?', $booking);
+    }
 }

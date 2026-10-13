@@ -513,6 +513,12 @@
         stack.insertBefore(retry, stack.lastChild);
     }
 
+    /** Set the text box (e.g. from voice) and keep the send button in sync. */
+    function setInputText(text) {
+        textInput.value = text;
+        sendButton.disabled = busy || text.trim() === '';
+    }
+
     textInput.addEventListener('input', () => {
         sendButton.disabled = busy || textInput.value.trim() === '';
     });
@@ -543,6 +549,7 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let listening = false;
+    let pendingTranscript = '';
 
     if (SpeechRecognition) {
         recognition = new SpeechRecognition();
@@ -556,12 +563,13 @@
                 return;
             }
             stopSpeaking(); // Do not let the assistant talk over the candidate.
-            textInput.value = '';
+            setInputText('');
             try { recognition.start(); } catch { /* Already started. */ }
         });
 
         recognition.onstart = () => {
             listening = true;
+            pendingTranscript = '';
             micButton.classList.add('listening');
             micButton.setAttribute('aria-label', 'Stop listening');
             setStatus('Listening… tap again when you are done.', true);
@@ -573,6 +581,14 @@
             micButton.setAttribute('aria-label', 'Start speaking');
             if (!busy) {
                 setStatus(IDLE_HINT);
+            }
+            // Chrome sometimes stops on short phrases (like "18") without a final result.
+            // Send whatever was heard so the candidate is never left waiting.
+            if (pendingTranscript.trim()) {
+                const heard = pendingTranscript;
+                pendingTranscript = '';
+                setInputText('');
+                send(heard);
             }
         };
 
@@ -587,13 +603,26 @@
         };
 
         recognition.onresult = event => {
-            const result = event.results[event.results.length - 1];
-            const transcript = result[0].transcript;
-            textInput.value = transcript; // Show the words live as the candidate speaks.
-            if (result.isFinal) {
-                textInput.value = '';
-                send(transcript);
+            let finalText = '';
+            let interimText = '';
+            for (const result of event.results) {
+                if (result.isFinal) {
+                    finalText += result[0].transcript;
+                } else {
+                    interimText += result[0].transcript;
+                }
             }
+
+            if (finalText.trim()) {
+                pendingTranscript = '';
+                setInputText('');
+                recognition.stop();
+                send(finalText);
+                return;
+            }
+
+            pendingTranscript = interimText;
+            setInputText(interimText); // Show the words live as the candidate speaks.
         };
     } else {
         micButton.disabled = true;
