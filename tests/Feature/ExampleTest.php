@@ -10,10 +10,13 @@ class ExampleTest extends TestCase
     /**
      * A basic test example.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_the_home_page_redirects_to_the_voice_bot(): void
     {
-        $response = $this->get('/');
+        $this->get('/')->assertRedirect('/voice-bot');
+    }
 
-        $response->assertStatus(200);
+    public function test_the_voice_bot_page_loads(): void
+    {
+        $this->get('/voice-bot')->assertOk()->assertSee('Interview Assistant');
     }
 }

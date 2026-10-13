@@ -6,6 +6,7 @@ use Database\Seeders\InterviewSlotSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -25,3 +26,8 @@ Artisan::command('interview:reset-demo {--force : Skip the confirmation prompt}'
 
     $this->info('Demo data reset: no bookings, and slots are available for the next 5 weekdays.');
 })->purpose('Clear all bookings and create fresh interview slots for a demo');
+
+// Keep the demo bookable: top up slots for the next 5 weekdays every night (existing slots are untouched).
+Schedule::command('db:seed', ['--class' => InterviewSlotSeeder::class, '--force' => true])
+    ->dailyAt('00:10')
+    ->timezone('Asia/Kolkata');
