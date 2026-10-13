@@ -43,6 +43,95 @@ Reply text → Browser Text-to-Speech → Candidate hears it
 
 ---
 
+## 2a. Flow charts
+
+These diagrams render as pictures on GitHub. In VS Code, open the Markdown preview with **Ctrl+Shift+V**.
+
+### Chart 1: System flow (how the parts connect)
+
+```mermaid
+flowchart TD
+    A([Candidate speaks]) --> B[Browser Speech-to-Text]
+    B --> C[JavaScript sends text<br/>POST /api/voice-agent]
+    C --> D{VoiceAgentController<br/>validate + rate limit}
+    D -->|invalid input| E[422 error shown to candidate]
+    D -->|valid| F{Which agent?}
+    F -->|API key set| G[VoiceAgent<br/>Claude LLM decides the tool]
+    F -->|no API key| H[DemoVoiceAgent<br/>rule-based]
+    G --> I[MCP Client]
+    H --> I
+    I -->|stdio JSON-RPC| J[MCP Server<br/>InterviewSchedulerServer]
+    J --> K[check_available_slots]
+    J --> L[book_interview]
+    J --> M[get_booking]
+    K --> N[InterviewScheduler service<br/>validation + row lock]
+    L --> N
+    M --> N
+    N --> O[(MySQL<br/>interview_slots<br/>interview_bookings)]
+    O --> P[Agent builds the reply text]
+    P --> Q[Browser Text-to-Speech]
+    Q --> R([Candidate hears the reply])
+```
+
+### Chart 2: Booking, message by message
+
+```mermaid
+sequenceDiagram
+    actor C as Candidate
+    participant B as Browser
+    participant L as Laravel API
+    participant AI as Agent (Claude)
+    participant T as MCP Tools
+    participant DB as MySQL
+
+    C->>B: "Book my interview tomorrow at 11 AM"
+    B->>L: POST /api/voice-agent
+    L->>AI: conversation + list of tools
+    AI->>T: check_available_slots(tomorrow)
+    T->>DB: find free slots
+    DB-->>T: 11 AM, 3 PM
+    T-->>AI: free slots
+    AI-->>L: "11 AM is free. May I have your name?"
+    L-->>B: reply
+    B-->>C: speaks the reply
+    Note over C,AI: Candidate gives name and email,<br/>bot reads details back and asks "Shall I book it?"
+    C->>B: "Yes"
+    B->>L: POST /api/voice-agent
+    L->>AI: conversation
+    AI->>T: book_interview(date, time, name, email)
+    T->>DB: lock slot, check it is free, save booking
+    DB-->>T: booking ID 25
+    T-->>AI: booking ID 25
+    AI-->>L: "Booked! Your booking ID is 25"
+    L-->>B: reply
+    B-->>C: speaks the reply
+```
+
+### Chart 3: Booking decisions (what the bot asks next)
+
+```mermaid
+flowchart TD
+    S([Candidate wants to book]) --> D1{Date known?}
+    D1 -->|No| A1[Ask: Which date?]
+    D1 -->|Yes| D2{Time known?}
+    D2 -->|No| A2[List the free times]
+    D2 -->|Yes| D3{Is that time free?}
+    D3 -->|No| A3[Say it is taken<br/>and offer free times]
+    D3 -->|Yes| D4{Name known?}
+    D4 -->|No| A4[Ask for full name]
+    D4 -->|Yes| D5{Email known?}
+    D5 -->|No| A5[Ask for email]
+    D5 -->|Yes| D6{Candidate confirmed?}
+    D6 -->|Not yet| A6[Read back details<br/>ask yes or no]
+    D6 -->|No| A7[Ask what to change]
+    D6 -->|Yes| B1[Call book_interview tool]
+    B1 --> D7{Booked successfully?}
+    D7 -->|Yes| R1([Tell booking ID])
+    D7 -->|No, slot just taken| A3
+```
+
+---
+
 ## 3. Step-by-step: what happens when a candidate books
 
 Example: the candidate says **"Book my interview tomorrow at 3 PM."**
