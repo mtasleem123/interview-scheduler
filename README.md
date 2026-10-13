@@ -1,3 +1,14 @@
+---
+title: Interview Scheduler
+emoji: 🎙️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 10000
+pinned: false
+short_description: Voice bot to check, book and look up interview slots
+---
+
 # Voice-Based AI Interview Scheduler
 
 A browser voice bot that lets candidates check interview slots, book an interview, and look up a booking by speaking.

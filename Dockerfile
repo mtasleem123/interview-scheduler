@@ -1,4 +1,4 @@
-# Free-tier demo image (Render). Runs in demo mode with a SQLite database inside the container.
+# Free-tier demo image (Hugging Face Spaces or Render). Runs in demo mode with a SQLite database inside the container.
 FROM php:8.4-cli
 
 RUN apt-get update \
@@ -16,6 +16,11 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-in
 COPY . .
 RUN composer dump-autoload --optimize --no-dev --no-interaction \
     && chmod +x docker/start.sh
+
+# Hugging Face Spaces runs containers as user ID 1000, so that user must own the app.
+RUN useradd --create-home --uid 1000 app \
+    && chown -R app:app /app
+USER app
 
 ENV APP_ENV=production \
     APP_DEBUG=false \
